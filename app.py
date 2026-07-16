@@ -1,157 +1,170 @@
 import streamlit as st
 import pandas as pd
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer, util
 
-# 1. تهيئة الصفحة وضبط الاتجاه بالكامل
-st.set_page_config(page_title="محرك البحث الذكي", layout="centered")
+# --- 1. إعدادات الصفحة الأساسية ---
+st.set_page_config(page_title="المساعد الذكي", page_icon="🤖", layout="centered")
 
-# حقن كود CSS قوي يجبر المتصفح بالكامل على التحول لـ RTL
+# --- 2. حقن كود CSS لإجبار المتصفح على التنسيق من اليمين إلى اليسار (RTL) ---
 st.markdown(
     """
     <style>
-    /* تطبيق اتجاه RTL على حاوية التطبيق بأكملها وجسم الصفحة */
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stSidebar"] {
+    /* جعل اتجاه الصفحة بالكامل من اليمين إلى اليسار */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+        direction: RTL;
+        text-align: right;
+    }
+    /* تنسيق حقول الإدخال لتكتب من اليمين */
+    input, textarea, .stTextArea textarea {
         direction: RTL !important;
         text-align: right !important;
     }
-    
-    /* ضبط المدخلات، النصوص المرافقة لها، والعناصر النائبة */
-    div[data-testid="stTextInput"] {
-        direction: RTL !important;
-        text-align: right !important;
-    }
-    
-    input {
-        direction: RTL !important;
-        text-align: right !important;
-    }
-    
-    /* ضبط محاذاة كافة العناوين والنصوص العادية */
+    /* محاذاة العناوين والنصوص */
     h1, h2, h3, h4, h5, h6, p, span, label {
         text-align: right !important;
         direction: RTL !important;
     }
-    
-    /* محاذاة الأزرار وتأثيراتها البصرية */
-    div.stButton > button {
-        display: block;
-        margin-right: auto !important; /* لدفع الزر إلى جهة اليمين */
-        margin-left: 0 !important;
-        direction: RTL !important;
-    }
-    
-    /* ضبط محاذاة صناديق التنبيهات (النجاح، التحذير، الخطأ) */
+    /* ضبط اتجاه أيقونات التنبيهات */
     [data-testid="stNotification"] {
-        direction: RTL !important;
-        text-align: right !important;
+        direction: RTL;
+        text-align: right;
     }
-    
-    .stAlert {
-        direction: RTL !important;
+    /* ضبط اتجاه الصناديق والمقاييس */
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
         text-align: right !important;
-    }
-    
-    /* ضبط الأيقونات المرافقة للتنبيهات لتظهر على اليمين */
-    [data-testid="stNotification"] > div {
-        flex-direction: row-reverse !important;
+        direction: RTL !important;
     }
     </style>
     """,
     unsafe_allow_html=True
 )
-# ==========================================
-# ⚠️ ضع رابط ملف جوجل شيت الخاص بك هنا بأمان (مخفي تماماً عن المستخدمين)
-# تأكد أن صلاحية الرابط هي "Anyone with the link can view"
-# ==========================================
-SECRET_GSHEET_URL = "https://docs.google.com/spreadsheets/d/1OHR6udxUs5XKAASLB2TqDzVLV0u5Qce5/edit?usp=sharing&ouid=105622729338359124172&rtpof=true&sd=true"
 
-# 1. تحميل نموذج الذكاء الاصطناعي لفهم معاني اللغة العربية السياقية
-@st.cache_resource
-def load_model():
-    return SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+st.markdown("<h2 style='text-align: center;'>🤖 مساعد الفريق العلمي الدلالي</h2>", unsafe_allow_html=True)
 
-model = load_model()
+# --- 3. رابط الاتصال بجوجل شيت ---
+# 🔗 استبدل الرابط أدناه برابط ملفك الحقيقي (تأكد أن الرابط متاح للعرض العام)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1OHR6udxUs5XKAASLB2TqDzVLV0u5Qce5/edit?usp=sharing&ouid=105622729338359124172&rtpof=true&sd=true"
 
-# 2. دالة لقراءة البيانات في الخلفية وتحويل الرابط إلى صيغة CSV
-@st.cache_data(ttl=600)  # لتسريع البحث وحفظ البيانات مؤقتاً لمدة 10 دقائق
-def load_data_from_gsheet(sheet_url):
+# تحويل الرابط تلقائيًا إلى صيغة تصدير CSV
+try:
+    csv_url = SHEET_URL.replace('/edit?usp=sharing', '/export?format=csv')
+    csv_url = csv_url.replace('/edit#gid=', '/export?format=csv&gid=')
+except Exception as e:
+    st.error(f"خطأ في صيغة الرابط المكتوب: {e}")
+    st.stop()
+
+
+# --- 4. جلب البيانات من جوجل شيت وتجهيزها ---
+@st.cache_data(show_spinner="جاري الاتصال بجوجل شيت وجلب جدول البيانات...")
+def fetch_data(url):
     try:
-        csv_url = sheet_url.split('/edit')[0] + '/gviz/tq?tqx=out:csv'
-        df = pd.read_csv(csv_url)
-        return df
-    except Exception as e:
-        st.error(f"حدث خطأ أثناء الاتصال بالملف: {e}")
+        data_frame = pd.read_csv(url, encoding="utf-8")
+        return data_frame
+    except Exception as error:
+        st.error(f"❌ فشل الاتصال بجوجل شيت. تأكد من أن الرابط متاح لـ 'أي شخص لديه الرابط': {error}")
         return None
 
-# واجهة تطبيق Streamlit النظيفة والخالية من الروابط
-st.title("🔍 محرك البحث الذكي لأسئلة البوت العلمي")
-st.write("اكتب سؤالك بالأسفل واضغط على الزر لمطابقته الفكرية والدلالية مع أسئلة قاعدة البيانات.")
-st.markdown("---")
-
-# جلب البيانات من الشيت في الخلفية (مخفي تماماً)
-df = load_data_from_gsheet(SECRET_GSHEET_URL)
+df = fetch_data(csv_url)
 
 if df is not None:
-    # تنظيف أسماء الأعمدة للتأكد من عدم وجود مسافات حول الكلمات
-    df.columns = [col.strip() for col in df.columns]
-    
-    # أسماء الأعمدة المعتمدة والمطابقة لملفك
-    col_question = "Question"
-    col_answer = "Answer"
-    col_category = "Category"
-    
-    # التحقق من وجود عمودي السؤال والجواب
-    if col_question in df.columns and col_answer in df.columns:
-        # إزالة أي أسطر فارغة في عمود الأسئلة
-        df = df.dropna(subset=[col_question])
-        
-        # صندوق إدخال السؤال (الوحيد الذي يظهر للمستخدم في المتصفح)
-        user_question = st.text_input("اكتب سؤالك هنا:", placeholder="مثال: هل لازم أنصح البنت لو خطبها شخص غير مناسب؟")
-        
-        # زر الإرسال والمقارنة
-        search_button = st.button("إرسال السؤال ومقارنته 🚀")
-        
-        # تنفيذ عملية المقارنة عند الضغط على الزر
-        if search_button and user_question:
-            with st.spinner("جاري تحليل فكرة السؤال ومقارنتها..."):
-                # تحويل الأسئلة في الملف وسؤال المستخدم إلى Embeddings تعبر عن المعنى
-                questions_list = df[col_question].astype(str).tolist()
-                questions_embeddings = model.encode(questions_list, show_progress_bar=False)
-                user_embedding = model.encode([user_question])
-                
-                # حساب جيب تمام الزاوية (Cosine Similarity) للتشابه المعنوي
-                similarities = cosine_similarity(user_embedding, questions_embeddings)[0]
-                
-                # العثور على المؤشر وأعلى نسبة تشابه
-                max_sim_idx = similarities.argmax()
-                highest_similarity_score = similarities[max_sim_idx] * 100
-                
-                st.markdown(f"### 📊  نسبة التطابق الفكري المحسوبة: ` {highest_similarity_score:.2f}` % ")
-                st.markdown("---")
-                
-                # شرط الـ 70% للتحقق من وجود السؤال في قاعدة البيانات
-                if highest_similarity_score >= 70:
-                    matched_question = df.iloc[max_sim_idx][col_question]
-                    matched_answer = df.iloc[max_sim_idx][col_answer]
-                    matched_category = df.iloc[max_sim_idx][col_category] if col_category in df.columns else None
-                    
-                    # عرض صنف السؤال إذا كان متوفراً في السطر
-                    if pd.notna(matched_category):
-                        st.info(f"📁 **تصنيف السؤال :**  {matched_category}")
-                        
-                    st.subheader("📌 السؤال المطابق الذي تم العثور عليه:")
-                    st.markdown(f"> {matched_question}")
-                    
-                    st.subheader("📝 الإجابة المطابقة المعتمدة:")
-                    if pd.notna(matched_answer):
-                        st.success(matched_answer)
-                    else:
-                        st.warning("عُثر على سؤال مطابق بنسبة عالية، ولكن خانة الإجابة المقابلة له فارغة في الملف.")
-                else:
-                    st.error("❌ الملف لا يحتوي على سؤال مطابق لهذا السؤال (نسبة التطابق أقل من 70%)")
-                    
-        elif search_button and not user_question:
-            st.warning("⚠️ يرجى كتابة السؤال أولاً في الخانة المخصصة قبل الضغط على زر الإرسال.")
+    # التحقق من وجود الأعمدة المطلوبة
+    required_columns = ['Question', 'Answer', 'Category']
+    missing_cols = [col for col in required_columns if col not in df.columns]
+    if missing_cols:
+        st.error(f"❌ الأعمدة التالية مفقودة في السطر الأول من الشيت: {missing_cols}")
+        st.write("الأعمدة المتوفرة حالياً في ملفك هي:", list(df.columns))
+        st.stop()
+else:
+    st.stop()
+
+
+# --- 5. تحميل نموذج الذكاء الاصطناعي E5 ---
+@st.cache_resource(show_spinner="جاري تحميل نموذج الذكاء الاصطناعي لأول مرة (قد يستغرق دقيقة)...")
+def load_ai_model():
+    try:
+        # استدعاء النموذج الفائق والمناسب لـ Streamlit
+        model = SentenceTransformer('intfloat/multilingual-e5-small')
+        return model
+    except Exception as error:
+        st.error(f"❌ فشل تحميل نموذج الذكاء الاصطناعي. تأكد من اتصال جهازك بالإنترنت: {error}")
+        return None
+
+model = load_ai_model()
+
+if model is None:
+    st.stop()
+
+
+# --- 6. توليد المتجهات الدلالية ---
+@st.cache_data(show_spinner="جاري تجهيز متجهات الأسئلة المخزنة...")
+def generate_embeddings(_model, _df):
+    try:
+        # نموذج E5 يتطلب إضافة "passage: " قبل النصوص المخزنة لرفع دقة البحث
+        questions_list = [f"passage: {q}" for q in _df['Question'].tolist()]
+        embeddings = _model.encode(questions_list, convert_to_tensor=True)
+        return embeddings
+    except Exception as error:
+        st.error(f"❌ حدث خطأ أثناء معالجة نصوص الأسئلة: {error}")
+        return None
+
+question_embeddings = generate_embeddings(model, df)
+
+if question_embeddings is None:
+    st.stop()
+
+
+# --- 7. عناصر واجهة المستخدم في منتصف الصفحة تماماً ---
+st.write("---")
+
+user_query = st.text_area(
+    "📝 اكتب سؤالك هنا:", 
+    placeholder="مثال: كيف يمكنني تعديل الرمز السري؟",
+    height=100
+)
+
+submit_button = st.button("🔍 إرسال السؤال والمقارنة", use_container_width=True)
+
+
+# --- 8. معالجة البحث وعرض النتائج ---
+st.write("---")
+
+if submit_button:
+    if not user_query.strip():
+        st.warning("⚠️ الرجاء كتابة سؤال أولاً قبل الضغط على زر الإرسال.")
     else:
-        st.error(f"خطأ: يرجى التأكد من أن ملفك يحتوي على الأعمدة التالية تماماً وبنفس الأحرف الإنجليزية: '{col_question}' و '{col_answer}'")
+        with st.spinner("جاري مقارنة المعنى الدلالي لسؤالك..."):
+            # نموذج E5 يتطلب إضافة "query: " قبل سؤال المستخدم الجديد
+            query_embedding = model.encode(f"query: {user_query}", convert_to_tensor=True)
+            
+            # حساب تشابه جيب التمام
+            cosine_scores = util.cos_sim(query_embedding, question_embeddings)[0]
+            
+            best_match_idx = cosine_scores.argmax().item()
+            score = cosine_scores[best_match_idx].item()
+            similarity_percentage = round(score * 100, 2)
+            
+            matched_question = df.iloc[best_match_idx]['Question']
+            answer = df.iloc[best_match_idx]['Answer']
+            category = df.iloc[best_match_idx]['Category']
+
+        # 🛑 تطبيق شرط الحماية: حد أدنى للتطابق 70%
+        if similarity_percentage < 70.0:
+            st.error("❌ عذراً، لم أجد سؤالاً قريباً من طرحك في قاعدة البيانات المتاحة.")
+            st.info(f"💡 أقرب تطابق وجدته كان بنسبة **{similarity_percentage}%** فقط، وهو غير كافٍ لضمان دقة الإجابة.")
+        else:
+            # عرض النتائج في حال تجاوز النسبة المطلوبة بنجاح
+            st.success("✅ تم العثور على أقرب تطابق بنجاح!")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(label="🎯 نسبة التشابه الدلالي", value=f"{similarity_percentage}%")
+            with col2:
+                st.metric(label="📁 تصنيف السؤال", value=category)
+                
+            st.markdown("### 🔍 السؤال الأقرب في الملف:")
+            st.info(matched_question)
+            
+            st.markdown("### 💡 الإجابة المستحضرة:")
+            st.write(answer)
+else:
+    st.info("💡 الرجاء كتابة سؤالك في الصندوق أعلاه ثم الضغط على زر **'إرسال السؤال والمقارنة'** لبدء البحث.")
