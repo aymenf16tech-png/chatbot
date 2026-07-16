@@ -117,9 +117,9 @@ if question_embeddings is None:
 st.write("---")
 
 user_query = st.text_area(
-    "📝 اكتب سؤالك هنا:", 
+    "📝 اكتب السؤال هنا:", 
     placeholder="مثال: كيف يمكنني تعديل الرمز السري؟",
-    height=100
+    height=200
 )
 
 submit_button = st.button("🔍 إرسال السؤال والمقارنة", use_container_width=True)
@@ -130,9 +130,9 @@ st.write("---")
 
 if submit_button:
     if not user_query.strip():
-        st.warning("⚠️ الرجاء كتابة سؤال أولاً قبل الضغط على زر الإرسال.")
+        st.warning("⚠️ الرجاء كتابة السؤال أولاً قبل الضغط على زر الإرسال.")
     else:
-        with st.spinner("جاري مقارنة المعنى الدلالي لسؤالك..."):
+        with st.spinner("جاري مقارنة المعنى الدلالي للسؤال..."):
             # نموذج E5 يتطلب إضافة "query: " قبل سؤال المستخدم الجديد
             query_embedding = model.encode(f"query: {user_query}", convert_to_tensor=True)
             
@@ -149,7 +149,7 @@ if submit_button:
 
         # 🛑 تطبيق شرط الحماية: حد أدنى للتطابق 70%
         if similarity_percentage < 70.0:
-            st.error("❌ عذراً، لم أجد سؤالاً قريباً من طرحك في قاعدة البيانات المتاحة.")
+            st.error("❌ عذراً، لم أجد سؤالاً قريباً من هذا في قاعدة البيانات المتاحة.")
             st.info(f"💡 أقرب تطابق وجدته كان بنسبة **{similarity_percentage}%** فقط، وهو غير كافٍ لضمان دقة الإجابة.")
         else:
             # عرض النتائج في حال تجاوز النسبة المطلوبة بنجاح
