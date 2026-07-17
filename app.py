@@ -1,170 +1,166 @@
 import streamlit as st
-import pandas as pd
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import util
 
-# --- 1. إعدادات الصفحة الأساسية ---
-st.set_page_config(page_title="المساعد الذكي", page_icon="🤖", layout="centered")
-
-# --- 2. حقن كود CSS لإجبار المتصفح على التنسيق من اليمين إلى اليسار (RTL) ---
-st.markdown(
-    """
-    <style>
-    /* جعل اتجاه الصفحة بالكامل من اليمين إلى اليسار */
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
-        direction: RTL;
-        text-align: right;
-    }
-    /* تنسيق حقول الإدخال لتكتب من اليمين */
-    input, textarea, .stTextArea textarea {
-        direction: RTL !important;
-        text-align: right !important;
-    }
-    /* محاذاة العناوين والنصوص */
-    h1, h2, h3, h4, h5, h6, p, span, label {
-        text-align: right !important;
-        direction: RTL !important;
-    }
-    /* ضبط اتجاه أيقونات التنبيهات */
-    [data-testid="stNotification"] {
-        direction: RTL;
-        text-align: right;
-    }
-    /* ضبط اتجاه الصناديق والمقاييس */
-    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
-        text-align: right !important;
-        direction: RTL !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
+from config import (
+    SHEET_URL,
+    HARD_THRESHOLD,
+    CONFIDENT_THRESHOLD,
+    TOP_K,
+    CSS_FILE_PATH,
+)
+from utils import (
+    convert_to_csv_url,
+    fetch_data,
+    load_ai_model,
+    generate_embeddings,
+    load_css,
 )
 
-st.markdown("<h2 style='text-align: center;'>🤖 مساعد الفريق العلمي الدلالي</h2>", unsafe_allow_html=True)
+# ============================================================
+# 1) إعدادات الصفحة + حقن ملف CSS الخارجي
+# ============================================================
+st.set_page_config(page_title="المساعد الذكي", page_icon="🤖", layout="centered")
+st.markdown(f"<style>{load_css(CSS_FILE_PATH)}</style>", unsafe_allow_html=True)
 
-# --- 3. رابط الاتصال بجوجل شيت ---
-# 🔗 استبدل الرابط أدناه برابط ملفك الحقيقي (تأكد أن الرابط متاح للعرض العام)
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1OHR6udxUs5XKAASLB2TqDzVLV0u5Qce5/edit?usp=sharing&ouid=105622729338359124172&rtpof=true&sd=true"
+st.markdown("<div class='app-title'>🤖 المساعد الذكي للفريق العلمي</div>", unsafe_allow_html=True)
+st.markdown("<div class='app-subtitle'>بحث دلالي فوري في قاعدة الأسئلة والأجوبة</div>", unsafe_allow_html=True)
 
-# تحويل الرابط تلقائيًا إلى صيغة تصدير CSV
-try:
-    csv_url = SHEET_URL.replace('/edit?usp=sharing', '/export?format=csv')
-    csv_url = csv_url.replace('/edit#gid=', '/export?format=csv&gid=')
-except Exception as e:
-    st.error(f"خطأ في صيغة الرابط المكتوب: {e}")
-    st.stop()
-
-
-# --- 4. جلب البيانات من جوجل شيت وتجهيزها ---
-@st.cache_data(show_spinner="جاري الاتصال بجوجل شيت وجلب جدول البيانات...")
-def fetch_data(url):
-    try:
-        data_frame = pd.read_csv(url, encoding="utf-8")
-        return data_frame
-    except Exception as error:
-        st.error(f"❌ فشل الاتصال بجوجل شيت. تأكد من أن الرابط متاح لـ 'أي شخص لديه الرابط': {error}")
-        return None
-
+# ============================================================
+# 2) تجهيز البيانات والنموذج (مرة واحدة بفضل التخزين المؤقت)
+# ============================================================
+csv_url = convert_to_csv_url(SHEET_URL)
 df = fetch_data(csv_url)
 
-if df is not None:
-    # التحقق من وجود الأعمدة المطلوبة
-    required_columns = ['Question', 'Answer', 'Category']
-    missing_cols = [col for col in required_columns if col not in df.columns]
-    if missing_cols:
-        st.error(f"❌ الأعمدة التالية مفقودة في السطر الأول من الشيت: {missing_cols}")
-        st.write("الأعمدة المتوفرة حالياً في ملفك هي:", list(df.columns))
-        st.stop()
-else:
+if df is None:
     st.stop()
 
-
-# --- 5. تحميل نموذج الذكاء الاصطناعي E5 ---
-@st.cache_resource(show_spinner="جاري تحميل نموذج الذكاء الاصطناعي لأول مرة (قد يستغرق دقيقة)...")
-def load_ai_model():
-    try:
-        # استدعاء النموذج الفائق والمناسب لـ Streamlit
-        model = SentenceTransformer('intfloat/multilingual-e5-small')
-        return model
-    except Exception as error:
-        st.error(f"❌ فشل تحميل نموذج الذكاء الاصطناعي. تأكد من اتصال جهازك بالإنترنت: {error}")
-        return None
-
 model = load_ai_model()
-
 if model is None:
     st.stop()
 
-
-# --- 6. توليد المتجهات الدلالية ---
-@st.cache_data(show_spinner="جاري تجهيز متجهات الأسئلة المخزنة...")
-def generate_embeddings(_model, _df):
-    try:
-        # نموذج E5 يتطلب إضافة "passage: " قبل النصوص المخزنة لرفع دقة البحث
-        questions_list = [f"passage: {q}" for q in _df['Question'].tolist()]
-        embeddings = _model.encode(questions_list, convert_to_tensor=True)
-        return embeddings
-    except Exception as error:
-        st.error(f"❌ حدث خطأ أثناء معالجة نصوص الأسئلة: {error}")
-        return None
-
 question_embeddings = generate_embeddings(model, df)
-
 if question_embeddings is None:
     st.stop()
 
+# تهيئة حالة الجلسة (Session State) لحفظ نتائج البحث وتجنب اختفائها عند التفاعل
+if "search_results" not in st.session_state:
+    st.session_state.search_results = None
 
-# --- 7. عناصر واجهة المستخدم في منتصف الصفحة تماماً ---
+# ============================================================
+# 3) واجهة الإدخال (باستخدام st.form لتحسين الأداء)
+# ============================================================
+st.write("")
+
+with st.form(key="search_form", clear_on_submit=False):
+    user_query = st.text_area(
+        "📝 اكتب السؤال هنا:",
+        placeholder="مثال: كيف يمكنني تعديل الرمز السري؟",
+        height=160,
+    )
+    submit_button = st.form_submit_button("  🔍 ابحث عن الإجابة  ")
+
 st.write("---")
 
-user_query = st.text_area(
-    "📝 اكتب السؤال هنا:", 
-    placeholder="مثال: كيف يمكنني تعديل الرمز السري؟",
-    height=200
-)
-
-submit_button = st.button("🔍 إرسال السؤال والمقارنة", use_container_width=True)
-
-
-# --- 8. معالجة البحث وعرض النتائج ---
-st.write("---")
-
+# ============================================================
+# 4) معالجة البحث الدلالي وحفظ النتائج
+# ============================================================
 if submit_button:
-    if not user_query.strip():
-        st.warning("⚠️ الرجاء كتابة السؤال أولاً قبل الضغط على زر الإرسال.")
+    clean_query = user_query.strip()
+    if not clean_query:
+        st.warning("⚠️ الرجاء كتابة السؤال أولاً قبل الضغط على زر البحث.")
+        st.session_state.search_results = None
     else:
-        with st.spinner("جاري مقارنة المعنى الدلالي للسؤال..."):
-            # نموذج E5 يتطلب إضافة "query: " قبل سؤال المستخدم الجديد
-            query_embedding = model.encode(f"query: {user_query}", convert_to_tensor=True)
-            
-            # حساب تشابه جيب التمام
-            cosine_scores = util.cos_sim(query_embedding, question_embeddings)[0]
-            
-            best_match_idx = cosine_scores.argmax().item()
-            score = cosine_scores[best_match_idx].item()
-            similarity_percentage = round(score * 100, 2)
-            
-            matched_question = df.iloc[best_match_idx]['Question']
-            answer = df.iloc[best_match_idx]['Answer']
-            category = df.iloc[best_match_idx]['Category']
+        with st.spinner("جاري تحليل السؤال ومقارنته دلالياً..."):
+            # ترميز السؤال وتطبيعه دلالياً
+            query_embedding = model.encode(
+                f"query: {clean_query}",
+                convert_to_tensor=True,
+                normalize_embeddings=True,
+            )
 
-        # 🛑 تطبيق شرط الحماية: حد أدنى للتطابق 70%
-        if similarity_percentage < 70.0:
-            st.error("❌ عذراً، لم أجد سؤالاً قريباً من هذا في قاعدة البيانات المتاحة.")
-            st.info(f"💡 أقرب تطابق وجدته كان بنسبة **{similarity_percentage}%** فقط، وهو غير كافٍ لضمان دقة الإجابة.")
-        else:
-            # عرض النتائج في حال تجاوز النسبة المطلوبة بنجاح
-            st.success("✅ تم العثور على أقرب تطابق بنجاح!")
+            # حساب التشابه وجلب أفضل النتائج
+            cosine_scores = util.cos_sim(query_embedding, question_embeddings)[0]
+            k = min(TOP_K, len(df))
+            top_results = cosine_scores.topk(k)
             
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(label="🎯 نسبة التشابه الدلالي", value=f"{similarity_percentage}%")
-            with col2:
-                st.metric(label="📁 تصنيف السؤال", value=category)
-                
-            st.markdown("### 🔍 السؤال الأقرب في الملف:")
-            st.info(matched_question)
+            # تخزين النتائج في الـ Session State لمنع اختفائها
+            st.session_state.search_results = {
+                "top_indices": [int(i) for i in top_results.indices],
+                "top_scores": [round(float(s) * 100, 2) for s in top_results.values],
+                "k": k
+            }
+
+# ============================================================
+# 5) عرض النتائج المستمرة
+# ============================================================
+if st.session_state.search_results:
+    results = st.session_state.search_results
+    best_match_idx = results["top_indices"][0]
+    similarity_percentage = results["top_scores"][0]
+    k = results["k"]
+
+    # الحالة الأولى: نسبة التشابه ضعيفة جداً
+    if similarity_percentage < HARD_THRESHOLD:
+        st.error("❌ لا يوجد سؤال مطابق أو قريب لهذا السؤال في قاعدة البيانات المتاحة.")
+        st.info(
+            f"💡 أقرب تطابق تم العثور عليه كانت نسبته **{similarity_percentage}%**، "
+            f"وهي أقل من الحد الأدنى المطلوب ({HARD_THRESHOLD:.0f}%)."
+        )
+
+    # الحالة الثانية: تطابق مؤكد وعالي الدقة
+    elif similarity_percentage >= CONFIDENT_THRESHOLD:
+        matched_question = df.iloc[best_match_idx]["Question"]
+        answer = df.iloc[best_match_idx]["Answer"]
+        category = df.iloc[best_match_idx]["Category"]
+
+        st.success("✅ تم العثور على سؤال مطابق بدقة عالية!")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="🎯 نسبة التشابه الدلالي", value=f"{similarity_percentage}%")
+        with col2:
+            st.metric(label="📁 تصنيف السؤال", value=category)
+
+        st.markdown(
+            f"""
+            <div class="result-card">
+                <div class="result-label">🔍 السؤال الأقرب في الملف:</div>
+                <div class="result-text">{matched_question}</div>
+            </div>
+            <div class="result-card">
+                <div class="result-label">💡 الإجابة:</div>
+                <div class="result-text">{answer}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # الحالة الثالثة: منطقة عدم اليقين (عرض عدة خيارات محتملة)
+    else:
+        st.warning(
+            f"🤔 لم يتم العثور على تطابق مؤكد (أعلى نسبة {similarity_percentage}%). "
+            f"إليك أقرب {k} أسئلة محتملة، اختر الأقرب لسؤالك:"
+        )
+
+        for rank, (idx, sc) in enumerate(zip(results["top_indices"], results["scores"]), start=1):
+            if sc < HARD_THRESHOLD:
+                continue
+            q = df.iloc[idx]["Question"]
+            a = df.iloc[idx]["Answer"]
+            c = df.iloc[idx]["Category"]
             
-            st.markdown("### 💡 الإجابة المستحضرة:")
-            st.write(answer)
+            # الآن لن تختفي النتائج عند فتح الـ expander
+            with st.expander(f"{rank}. {q}   —   نسبة التشابه: {sc}%"):
+                st.markdown(
+                    f"""
+                    <div class="result-card">
+                        <div class="result-label">📁 التصنيف: {c}</div>
+                        <div class="result-label">💡 الإجابة:</div>
+                        <div class="result-text">{a}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 else:
-    st.info("💡 الرجاء كتابة سؤالك في الصندوق أعلاه ثم الضغط على زر **'إرسال السؤال والمقارنة'** لبدء البحث.")
+    if not submit_button:
+        st.info("💡 اكتب سؤالك في الصندوق أعلاه ثم اضغط **'ابحث عن الإجابة'** لبدء البحث.")

@@ -1,0 +1,151 @@
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Tajawal', sans-serif !important;
+}
+
+:root {
+    --navy-dark: #0f1b33;
+    --navy: #16233f;
+    --navy-light: #1f2f52;
+    --gold: #c9a24b;
+    --gold-light: #e8c97a;
+    --text-light: #eef1f7;
+    --muted: #9aa5bd;
+    --success: #2e7d32;
+    --error: #c0392b;
+}
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+    direction: RTL;
+    text-align: right;
+    background: linear-gradient(180deg, var(--navy-dark) 0%, var(--navy) 100%);
+}
+
+[data-testid="stHeader"] { background: transparent; }
+
+.block-container {
+    padding-top: 2.2rem;
+    max-width: 780px;
+}
+
+h1, h2, h3, h4, h5, h6, p, span, label, li {
+    text-align: right !important;
+    direction: RTL !important;
+    color: var(--text-light);
+}
+
+/* عنوان التطبيق */
+.app-title {
+    text-align: center !important;
+    font-weight: 900;
+    font-size: 2.1rem;
+    background: linear-gradient(90deg, var(--gold-light), var(--gold));
+    -webkit-background-clip: text; /* For Safari and older Chrome versions */
+    background-clip: text;         /* Standard property for modern browser compatibility */
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.2rem;
+}
+
+.app-subtitle {
+    text-align: center !important;
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin-bottom: 1.6rem;
+}
+
+/* حقل الإدخال */
+textarea, input {
+    direction: RTL !important;
+    text-align: right !important;
+    background-color: var(--navy-light) !important;
+    color: var(--text-light) !important;
+    border: 1.5px solid #2c3c63 !important;
+    border-radius: 14px !important;
+    font-size: 1.02rem !important;
+}
+textarea:focus, input:focus {
+    border: 1.5px solid var(--gold) !important;
+    box-shadow: 0 0 0 3px rgba(201,162,75,0.15) !important;
+}
+
+/* الزر */
+div.stButton > button {
+    width: 100%;
+    background: linear-gradient(90deg, var(--gold), var(--gold-light));
+    color: var(--navy-dark);
+    font-weight: 900;
+    font-size: 1.05rem;
+    border: none;
+    border-radius: 14px;
+    padding: 0.65rem 0;
+    transition: all 0.2s ease-in-out;
+}
+div.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(240,162,75,0.35);
+    color: var(--navy-dark);
+}
+
+/* الصناديق (نجاح / خطأ / معلومة / تحذير) */
+[data-testid="stNotification"] {
+    direction: RTL;
+    text-align: right;
+    border-radius: 14px !important;
+}
+
+/* بطاقة النتيجة */
+.result-card {
+    background: var(--navy-light);
+    border: 1px solid #2c3c63;
+    border-right: 5px solid var(--gold);
+    border-radius: 16px;
+    padding: 1.2rem 1.4rem;
+    margin-top: 1rem;
+    direction: RTL;
+    text-align: right;
+}
+.result-label {
+    color: var(--gold-light);
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 0.3rem;
+    direction: RTL;
+    text-align: right;
+}
+.result-text {
+    color: var(--text-light);
+    font-size: 1.05rem;
+    line-height: 1.9;
+    direction: RTL;
+    text-align: right;
+}
+
+/* المقاييس */
+[data-testid="stMetric"] {
+    background: var(--navy-light);
+    border: 1px solid #2c3c63;
+    border-radius: 14px;
+    padding: 0.8rem;
+    direction: RTL;
+    text-align: right;
+}
+[data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
+    text-align: center !important;
+    direction: RTL !important;
+    color: var(--text-light) !important;
+}
+
+/* صناديق الخيارات المحتملة (Expander) */
+[data-testid="stExpander"] {
+    background: var(--navy-light);
+    border: 1px solid #2c3c63;
+    border-radius: 14px;
+    margin-bottom: 0.6rem;
+    direction: RTL;
+    text-align: right;
+}
+
+hr { border-color: #2c3c63; }
+
+  
